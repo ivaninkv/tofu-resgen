@@ -43,6 +43,10 @@ type config struct {
 // of placeholders would break every plan.
 const tfvarsExampleFile = "terraform.tfvars.example"
 
+// readmeFile documents the generated module: what it creates, how to call it
+// from git, and what the module variable holds.
+const readmeFile = "README.md"
+
 func run(args []string) int {
 	fs := flag.NewFlagSet("tofu-resgen", flag.ContinueOnError)
 	var cfg config
@@ -52,10 +56,10 @@ func run(args []string) int {
 	fs.StringVar(&cfg.varName, "var-name", "", "module variable name (default derived from the resource type)")
 	fs.StringVar(&cfg.defaultsPath, "defaults", "", "YAML file with defaults for optional attributes")
 	fs.StringVar(&cfg.out, "out", "-", "output file, or '-' for stdout; with -all, an output directory")
-	fs.StringVar(&cfg.module, "module", "", "generate a module directory: variables.tf, main.tf and terraform.tfvars.example (one resource, or one subdirectory per resource with -all)")
+	fs.StringVar(&cfg.module, "module", "", "generate a module directory: variables.tf, main.tf, terraform.tfvars.example and README.md (one resource, or one subdirectory per resource with -all)")
 	fs.BoolVar(&cfg.tfvarsOptional, "tfvars-optional", false, "also show optional attributes, commented out, in the example tfvars")
 	fs.StringVar(&cfg.description, "description", "", "override the generated variable description")
-	fs.BoolVar(&cfg.doc, "doc", true, "emit schema descriptions as comments")
+	fs.BoolVar(&cfg.doc, "doc", true, "emit schema descriptions as comments in variables.tf and as a column of the README tables")
 	fs.BoolVar(&cfg.check, "check", false, "verify the generated variables against the schema instead of writing")
 	fs.BoolVar(&cfg.all, "all", false, "generate a file per resource into the -out directory")
 	fs.StringVar(&cfg.tofuBin, "tofu-bin", "tofu", "tofu binary used by -refresh-schema")
@@ -193,7 +197,7 @@ func loadDefaults(cfg config, res schema.Schema) (*tfgen.Defaults, int, error) {
 }
 
 // runModule writes or checks a module directory for one resource:
-// variables.tf, main.tf and terraform.tfvars.example.
+// variables.tf, main.tf, terraform.tfvars.example and README.md.
 func runModule(cfg config, addr string, provider schema.ProviderSchema, resource, varName string) int {
 	res, err := provider.Resource(resource)
 	if err != nil {
@@ -207,7 +211,8 @@ func runModule(cfg config, addr string, provider schema.ProviderSchema, resource
 }
 
 // runAllModules writes or checks one module directory per resource, each with
-// its own example tfvars (one defaults file cannot describe every resource).
+// its own example tfvars and README (one defaults file cannot describe every
+// resource, and a README documents one resource).
 func runAllModules(cfg config, addr string, provider schema.ProviderSchema) int {
 	if !cfg.check {
 		if err := os.MkdirAll(cfg.module, 0o755); err != nil {
@@ -275,6 +280,18 @@ func writeModule(cfg config, addr string, res schema.Schema, resource, varName s
 		fmt.Fprintf(os.Stderr, "tofu-resgen: %v\n", err)
 		return 2
 	}
+	readme, err := tfgen.GenerateReadme(res, tfgen.ReadmeOptions{
+		VarName:      varName,
+		ResourceName: resource,
+		ProviderAddr: addr,
+		Description:  cfg.description,
+		Doc:          cfg.doc,
+		Defaults:     defaults,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "tofu-resgen: %v\n", err)
+		return 2
+	}
 	if err := os.MkdirAll(cfg.module, 0o755); err != nil {
 		fmt.Fprintf(os.Stderr, "tofu-resgen: %v\n", err)
 		return 2
@@ -282,7 +299,7 @@ func writeModule(cfg config, addr string, res schema.Schema, resource, varName s
 	files := []struct {
 		name    string
 		content []byte
-	}{{"variables.tf", vars}, {"main.tf", mainTF}, {tfvarsExampleFile, tfvars}}
+	}{{"variables.tf", vars}, {"main.tf", mainTF}, {tfvarsExampleFile, tfvars}, {readmeFile, readme}}
 	for _, f := range files {
 		path := filepath.Join(cfg.module, f.name)
 		if err := os.WriteFile(path, f.content, 0o644); err != nil {
@@ -296,6 +313,9 @@ func writeModule(cfg config, addr string, res schema.Schema, resource, varName s
 
 // checkModule verifies the module already on disk. The defaults file, when
 // given, describes the defaults already baked into variables.tf.
+//
+// README.md is prose: it is regenerated rather than checked, so a deviation
+// there is a documentation fix, not a schema deviation.
 func checkModule(cfg config, addr string, res schema.Schema, resource, varName string) int {
 	defaults, _, err := loadDefaults(cfg, res)
 	if err != nil {

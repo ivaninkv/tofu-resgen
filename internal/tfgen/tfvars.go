@@ -56,28 +56,44 @@ func GenerateTFVars(res schema.Schema, opt TFVarsOptions) ([]byte, error) {
 	if !isIdent(opt.VarName) {
 		return nil, fmt.Errorf("variable name %q is not a valid HCL identifier", opt.VarName)
 	}
-	name := opt.ExampleName
-	if name == "" {
-		name = DefaultExampleName
-	}
-
-	const instanceIndent = 4
-	var body strings.Builder
-	if err := writeExampleFields(&body, instanceIndent, nil, res.ConfigAttributes(), opt); err != nil {
+	assignment, err := exampleAssignment(res, opt)
+	if err != nil {
 		return nil, err
-	}
-	instance := "{}"
-	if body.Len() > 0 {
-		instance = "{\n" + body.String() + "  }"
 	}
 
 	var b strings.Builder
 	b.WriteString(header)
 	b.WriteString("# Copy this file to terraform.tfvars and replace the <placeholder> values.\n")
 	fmt.Fprintf(&b, "# One %s instance per map entry; the example below is named %q.\n\n",
-		opt.ResourceName, name)
-	fmt.Fprintf(&b, "%s = {\n  %s = %s\n}\n", opt.VarName, objectKeyExpr(name), instance)
+		opt.ResourceName, exampleName(opt))
+	b.WriteString(assignment)
 	return hclwrite.Format([]byte(b.String())), nil
+}
+
+// exampleAssignment renders the `var = { example = { ... } }` assignment: the
+// body of terraform.tfvars.example and of the README usage example. A module
+// call and a tfvars file take the same values, so both carry this one
+// rendering and cannot drift apart.
+func exampleAssignment(res schema.Schema, opt TFVarsOptions) (string, error) {
+	const instanceIndent = 4
+	var body strings.Builder
+	if err := writeExampleFields(&body, instanceIndent, nil, res.ConfigAttributes(), opt); err != nil {
+		return "", err
+	}
+	instance := "{}"
+	if body.Len() > 0 {
+		instance = "{\n" + body.String() + "  }"
+	}
+	return fmt.Sprintf("%s = {\n  %s = %s\n}\n",
+		opt.VarName, objectKeyExpr(exampleName(opt)), instance), nil
+}
+
+// exampleName is the map key of the example instance.
+func exampleName(opt TFVarsOptions) string {
+	if opt.ExampleName != "" {
+		return opt.ExampleName
+	}
+	return DefaultExampleName
 }
 
 // objectKeyExpr renders an object key: a bare identifier where HCL allows one,

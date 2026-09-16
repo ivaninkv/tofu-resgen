@@ -35,8 +35,10 @@ type Schema struct {
 
 // Block is a set of attributes plus legacy nested block types.
 type Block struct {
-	Attributes map[string]Attribute   `json:"attributes"`
-	BlockTypes map[string]NestedBlock `json:"block_types"`
+	Attributes      map[string]Attribute   `json:"attributes"`
+	BlockTypes      map[string]NestedBlock `json:"block_types"`
+	Description     string                 `json:"description"`
+	DescriptionKind string                 `json:"description_kind"`
 }
 
 // Attribute is a single field. Exactly one of Type / NestedType is set.
@@ -105,6 +107,8 @@ func (b Block) AllAttributes() map[string]Attribute {
 	maps.Copy(out, b.Attributes)
 	for name, nb := range b.BlockTypes {
 		out[name] = Attribute{
+			Description:     nb.Block.Description,
+			DescriptionKind: nb.Block.DescriptionKind,
 			NestedType: &NestedType{
 				Attributes:  nb.Block.AllAttributes(),
 				NestingMode: nb.NestingMode,
