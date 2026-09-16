@@ -24,9 +24,10 @@
 ## Установка
 
 ```bash
+# новейшая версия
 go install github.com/ivaninkv/tofu-resgen/cmd/tofu-resgen@latest
 
-# или явно
+# конкретная версия
 go install github.com/ivaninkv/tofu-resgen/cmd/tofu-resgen@v1.0.0
 ```
 
@@ -37,44 +38,6 @@ go install github.com/ivaninkv/tofu-resgen/cmd/tofu-resgen@v1.0.0
 export PATH="$(go env GOPATH)/bin:$PATH"
 command -v tofu-resgen
 ```
-
-Если прокси в вашем контуре недоступен, поставьте `GOPROXY=direct` — модуль тянется
-напрямую из GitHub (этим же способом можно взять ветку `master`):
-
-```bash
-GOPROXY=direct go install github.com/ivaninkv/tofu-resgen/cmd/tofu-resgen@master
-```
-
-### Почему тег `v0.1.0` берут в обход прокси
-
-История репозитория сведена в один коммит, и тег `v0.1.0` переставлен на него. Но
-`proxy.golang.org` успел закэшировать прежнюю историю, а версии в модульном прокси
-неизменяемы:
-
-| ref | что отдаёт прокси | что лежит на GitHub |
-|---|---|---|
-| `@v1.0.0` | текущий код (прокси взял его из GitHub) | тег `v1.0.0` |
-| `@v0.1.0` | прежняя сборка (коммит `9303bb7`, без режима `-module`) | тег `v0.1.0` (текущий код) |
-| `@latest` | `v0.3.0` (коммит `cc863a2`) — пока прокси не перечитает список тегов | тег `v1.0.0` |
-| `@master` | `v0.3.0` (коммит `cc863a2`) | ветка `master` |
-
-Практический вывод: **берите `v1.0.0`** — этот номер прокси увидел впервые, поэтому
-под ним лежит актуальный код, а checksum-база записала его хеш. Номер `v0.1.0`
-из прокси уже не исправить: под ним навсегда останется прежнее содержимое и прежний
-хеш в `sum.golang.org`, поэтому установка именно этого тега требует обхода прокси и
-проверки контрольных сумм (`GOPRIVATE` отключает и то, и другое; одного
-`GOPROXY=direct` мало — установка упадёт на `checksum mismatch`):
-
-```bash
-GOPRIVATE=github.com/ivaninkv/tofu-resgen go install github.com/ivaninkv/tofu-resgen/cmd/tofu-resgen@v0.1.0
-
-# то же самое, если GOPROXY задан явно
-GOPROXY=direct GOSUMDB=off go install github.com/ivaninkv/tofu-resgen/cmd/tofu-resgen@v0.1.0
-```
-
-Проверено: скачанный так модуль `v0.1.0` побайтово совпадает с деревом репозитория.
-Строки `@latest`/`@master` верны на момент записи кэша — если прокси перечитает теги,
-`curl https://proxy.golang.org/github.com/ivaninkv/tofu-resgen/@latest` это покажет.
 
 ### Сборка из исходников
 
