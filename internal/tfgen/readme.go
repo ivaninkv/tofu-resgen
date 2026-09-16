@@ -27,6 +27,10 @@ type ReadmeOptions struct {
 	Description string
 	// Doc emits schema descriptions as a column of the variable tables.
 	Doc bool
+	// Optional emits the optional attributes of the usage example as
+	// commented lines carrying the values the module applies without them.
+	// When false the example passes the required attributes only.
+	Optional bool
 	// Defaults supplies the value an optional attribute falls back to. May be nil.
 	Defaults *Defaults
 }
@@ -70,9 +74,18 @@ func GenerateReadme(res schema.Schema, opt ReadmeOptions) ([]byte, error) {
 	b.WriteString("## Описание\n\n")
 	b.WriteString(readmeSummary(res, opt))
 	b.WriteString("\n## Использование\n\n")
-	b.WriteString("Замените `<repo-url>`, `<path-to-module>` и `<ref>` на адрес репозитория, путь к каталогу модуля и тег; `?ref=` можно убрать, если модуль берётся из ветки по умолчанию. Передаются только обязательные параметры — остальные атрибуты переменная объявляет со значением по умолчанию.\n")
+	b.WriteString("Замените `<repo-url>`, `<path-to-module>` и `<ref>` на адрес репозитория, путь к каталогу модуля и тег; `?ref=` можно убрать, если модуль берётся из ветки по умолчанию. ")
+	if opt.Optional {
+		b.WriteString("Обязательные параметры переданы активными строками, optional-атрибуты — закомментированными, со значениями, которые модуль применяет без них; заглушки `<...>` заменяются на реальные значения.\n")
+	} else {
+		b.WriteString("Передаются только обязательные параметры — остальные атрибуты переменная объявляет со значением по умолчанию.\n")
+	}
 	if !hasRequired(res.ConfigAttributes()) {
-		b.WriteString("Обязательных атрибутов у ресурса нет, поэтому пример показывает пустой инстанс.\n")
+		if opt.Optional {
+			b.WriteString("Обязательных атрибутов у ресурса нет: все строки примера закомментированы.\n")
+		} else {
+			b.WriteString("Обязательных атрибутов у ресурса нет, поэтому пример показывает пустой инстанс.\n")
+		}
 	}
 	b.WriteString("\n```hcl\n")
 	b.WriteString(usage)
@@ -110,6 +123,8 @@ func readmeUsage(res schema.Schema, opt ReadmeOptions) (string, error) {
 	assignment, err := exampleAssignment(res, TFVarsOptions{
 		VarName:      opt.VarName,
 		ResourceName: opt.ResourceName,
+		Optional:     opt.Optional,
+		Defaults:     opt.Defaults,
 	})
 	if err != nil {
 		return "", err

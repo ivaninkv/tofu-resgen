@@ -57,7 +57,7 @@ func run(args []string) int {
 	fs.StringVar(&cfg.defaultsPath, "defaults", "", "YAML file with defaults for optional attributes")
 	fs.StringVar(&cfg.out, "out", "-", "output file, or '-' for stdout; with -all, an output directory")
 	fs.StringVar(&cfg.module, "module", "", "generate a module directory: variables.tf, main.tf, terraform.tfvars.example and README.md (one resource, or one subdirectory per resource with -all)")
-	fs.BoolVar(&cfg.tfvarsOptional, "tfvars-optional", false, "also show optional attributes, commented out, in the example tfvars")
+	fs.BoolVar(&cfg.tfvarsOptional, "tfvars-optional", false, "also show optional attributes, commented out, in the example tfvars and in the README usage example")
 	fs.StringVar(&cfg.description, "description", "", "override the generated variable description")
 	fs.BoolVar(&cfg.doc, "doc", true, "emit schema descriptions as comments in variables.tf and as a column of the README tables")
 	fs.BoolVar(&cfg.check, "check", false, "verify the generated variables against the schema instead of writing")
@@ -286,6 +286,7 @@ func writeModule(cfg config, addr string, res schema.Schema, resource, varName s
 		ProviderAddr: addr,
 		Description:  cfg.description,
 		Doc:          cfg.doc,
+		Optional:     cfg.tfvarsOptional,
 		Defaults:     defaults,
 	})
 	if err != nil {

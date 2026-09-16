@@ -2,6 +2,8 @@ package tfgen
 
 import (
 	"bytes"
+	"fmt"
+	"slices"
 	"strings"
 	"testing"
 	"unicode"
@@ -242,6 +244,90 @@ func TestReadmeEmptyObjectHasNoTable(t *testing.T) {
 	if strings.Contains(rest[:next], "| Атрибут |") {
 		t.Errorf("empty object carries a table:\n%s", rest[:next])
 	}
+}
+
+// TestReadmeUsageMatchesTFVarsExample pins the invariant behind
+// -tfvars-optional: the module call in the README is the example file wrapped
+// in a module block, in either mode. Both files ship together and a reader who
+// copies one must get the values of the other.
+func TestReadmeUsageMatchesTFVarsExample(t *testing.T) {
+	for _, tc := range []struct {
+		resource string
+		optional bool
+	}{
+		{"yandex_vpc_subnet", false},
+		{"yandex_vpc_subnet", true},
+		{"yandex_compute_instance", true},
+		{"yandex_vpc_network", true}, // nothing is mandatory: comments only
+	} {
+		label := tc.resource
+		if tc.optional {
+			label += " -tfvars-optional"
+		}
+		res := loadResource(t, tc.resource)
+		opt := readmeOptions(tc.resource)
+		opt.Optional = tc.optional
+		opt.Defaults = NewDefaults(map[string]any{"description": "managed by tofu-resgen"})
+
+		readme, err := GenerateReadme(res, opt)
+		if err != nil {
+			t.Fatalf("%s: GenerateReadme: %v", label, err)
+		}
+		usage := hclFence(t, string(readme))
+		if _, diags := hclparse.NewParser().ParseHCL([]byte(usage), "README.md"); diags.HasErrors() {
+			t.Fatalf("%s: usage block does not parse: %s\n%s", label, diags, usage)
+		}
+		tfvars, err := GenerateTFVars(res, TFVarsOptions{
+			VarName:      opt.VarName,
+			ResourceName: tc.resource,
+			Optional:     tc.optional,
+			Defaults:     opt.Defaults,
+		})
+		if err != nil {
+			t.Fatalf("%s: GenerateTFVars: %v", label, err)
+		}
+
+		example := flattenLines(string(tfvars))
+		start := slices.Index(example, opt.VarName+" = {")
+		if start < 0 {
+			t.Fatalf("%s: example file has no assignment:\n%s", label, tfvars)
+		}
+		want := example[start:]
+
+		lines := flattenLines(usage)
+		if len(lines) < 3 || lines[0] != fmt.Sprintf("module %q {", opt.VarName) || !strings.HasPrefix(lines[1], "source = ") {
+			t.Fatalf("%s: unexpected module block:\n%s", label, usage)
+		}
+		got := lines[2 : len(lines)-1] // drop the module wrapper and its brace
+		if !slices.Equal(want, got) {
+			t.Errorf("%s: the README call and the example file diverge:\nwant %q\ngot  %q", label, want, got)
+		}
+
+		commented := slices.ContainsFunc(got, func(l string) bool { return strings.HasPrefix(l, "# ") })
+		if commented != tc.optional {
+			t.Errorf("%s: commented optional lines = %v, want %v:\n%s", label, commented, tc.optional, usage)
+		}
+		src := string(readme)
+		if tc.optional != strings.Contains(src, "optional-атрибуты — закомментированными") {
+			t.Errorf("%s: the usage note does not match the example:\n%s", label, src)
+		}
+		if tc.optional == strings.Contains(src, "Передаются только обязательные параметры") {
+			t.Errorf("%s: the usage note does not match the example:\n%s", label, src)
+		}
+	}
+}
+
+// flattenLines collapses the indentation hclwrite adds, so that two renderings
+// of the same example compare equal without pinning their alignment.
+func flattenLines(src string) []string {
+	var out []string
+	for _, line := range strings.Split(src, "\n") {
+		line = strings.Join(strings.Fields(line), " ")
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return out
 }
 
 // TestReadmeRequiresVarName covers the option the file cannot do without.
