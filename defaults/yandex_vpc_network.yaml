@@ -1,0 +1,5 @@
+# Defaults for the yandex_vpc_network module variable.
+# Only optional attributes may carry a default; required attributes cannot.
+description: "managed by tofu-resgen"
+labels:
+  managed-by: tofu-resgen
